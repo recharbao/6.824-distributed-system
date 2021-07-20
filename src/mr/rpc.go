@@ -9,17 +9,62 @@ package mr
 import "os"
 import "strconv"
 
+const (
+	beginning = 0
+	doing = 1
+	finished = 2
+)
+
+const (
+	mapphase = 0
+	reducephase = 1
+	end = 2
+)
+
 //
 // example to show how to declare the arguments
 // and reply for an RPC.
 //
+//
+//type ExampleArgs struct {
+//	 X int
+//}
+//
+//type ExampleReply struct {
+//	 Y int
+//}
+//
+//type HeartBeatArgs struct {
+//	time int64
+//}
+//
+//type HeartBeatReply struct {
+//	time int64
+//}
 
-type ExampleArgs struct {
-	X int
+type WorkerArgs struct {
+
+	WorkerStatus int
 }
 
-type ExampleReply struct {
-	Y int
+type WorkerReply struct {
+	MapTaskSum int
+	ReduceTaskSum int
+	Workid int
+}
+
+type TaskArgs struct {
+	MapOrReduce int
+	FileName string
+	Taskid int
+	Status int
+}
+
+type TaskReply struct {
+	MapOrReduce int
+	FileName string
+	Taskid int
+	Status int
 }
 
 // Add your RPC definitions here.

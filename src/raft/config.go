@@ -134,6 +134,7 @@ func (cfg *config) crash1(i int) {
 }
 
 func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
+	// fmt.Printf("====================check_logs\n")
 	err_msg := ""
 	v := m.Command
 	for j := 0; j < len(cfg.logs); j++ {
@@ -179,6 +180,7 @@ const SnapShotInterval = 10
 
 // periodically snapshot raft state
 func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
+	// fmt.Printf("=======================applierSnap\n")
 	lastApplied := 0
 	for m := range applyCh {
 		if m.SnapshotValid {
@@ -440,8 +442,10 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
+		// fmt.Printf("index = %v\n", index)
+		// fmt.Printf("ok = %v\n", ok)
+		// fmt.Printf("cmd = %v\n", cfg.logs[i][1])
 		cfg.mu.Unlock()
-
 		if ok {
 			if count > 0 && cmd != cmd1 {
 				cfg.t.Fatalf("committed values do not match: index %v, %v, %v\n",
@@ -513,6 +517,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			cfg.mu.Unlock()
 			if rf != nil {
 				index1, _, ok := rf.Start(cmd)
+
 				if ok {
 					index = index1
 					break
@@ -520,14 +525,19 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			}
 		}
 
+
 		if index != -1 {
+			// fmt.Printf("-----------index = %v\n", index)
 			// somebody claimed to be the leader and to have
 			// submitted our command; wait a while for agreement.
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
+				fmt.Printf("cmd1 = %v =======cmd = %v ============" +
+					"====count = %v======index = %v\n",cmd1, cmd, nd, index)
 				if nd > 0 && nd >= expectedServers {
 					// committed
+					// fmt.Printf("cmd1 = %v ----------- cmd = %v\n", cmd1, cmd)
 					if cmd1 == cmd {
 						// and it was the command we submitted.
 						return index
@@ -536,6 +546,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {
+				// fmt.Printf("============================here !\n")
 				cfg.t.Fatalf("one(%v) failed to reach agreement", cmd)
 			}
 		} else {

@@ -8,8 +8,8 @@ package raft
 // test with the original before submitting.
 //
 
-import "6.824/labgob"
-import "6.824/labrpc"
+import "labgob"
+import "labrpc"
 import "bytes"
 import "log"
 import "sync"
@@ -525,7 +525,6 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			}
 		}
 
-
 		if index != -1 {
 			// fmt.Printf("-----------index = %v\n", index)
 			// somebody claimed to be the leader and to have
@@ -533,8 +532,8 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
-				fmt.Printf("cmd1 = %v =======cmd = %v ============" +
-					"====count = %v======index = %v\n",cmd1, cmd, nd, index)
+				fmt.Printf("cmd1 = %v =======cmd = %v ============"+
+					"====count = %v======index = %v\n", cmd1, cmd, nd, index)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					// fmt.Printf("cmd1 = %v ----------- cmd = %v\n", cmd1, cmd)

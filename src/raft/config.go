@@ -134,7 +134,6 @@ func (cfg *config) crash1(i int) {
 }
 
 func (cfg *config) checkLogs(i int, m ApplyMsg) (string, bool) {
-	// fmt.Printf("====================check_logs\n")
 	err_msg := ""
 	v := m.Command
 	for j := 0; j < len(cfg.logs); j++ {
@@ -180,7 +179,6 @@ const SnapShotInterval = 10
 
 // periodically snapshot raft state
 func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
-	// fmt.Printf("=======================applierSnap\n")
 	lastApplied := 0
 	for m := range applyCh {
 		if m.SnapshotValid {
@@ -442,9 +440,6 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
-		// fmt.Printf("index = %v\n", index)
-		// fmt.Printf("ok = %v\n", ok)
-		// fmt.Printf("cmd = %v\n", cfg.logs[i][1])
 		cfg.mu.Unlock()
 		if ok {
 			if count > 0 && cmd != cmd1 {
@@ -532,11 +527,10 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
-				fmt.Printf("cmd1 = %v =======cmd = %v ============"+
-					"====count = %v======index = %v\n", cmd1, cmd, nd, index)
+				//fmt.Printf("out cmd1 = %v ----------- cmd = %v\n", cmd1, cmd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
-					// fmt.Printf("cmd1 = %v ----------- cmd = %v\n", cmd1, cmd)
+					//fmt.Printf("in cmd1 = %v ----------- cmd = %v\n", cmd1, cmd)
 					if cmd1 == cmd {
 						// and it was the command we submitted.
 						return index

@@ -383,7 +383,7 @@ func (rf *Raft) AppendEntriesToServer() {
 			}
 		}
 		rf.mu.Unlock()
-		time.Sleep(250 * time.Millisecond)
+		time.Sleep(70 * time.Millisecond)
 	}
 }
 
@@ -453,7 +453,7 @@ func (rf *Raft) ticker() {
 		// be started and to randomize sleeping time using
 		// time.Sleep().
 
-		t := rand.Intn(2000-1200) + 1200
+		t := rand.Intn(700-400) + 400
 		time.Sleep(time.Duration(t) * time.Millisecond)
 		rf.mu.Lock()
 		if rf.status != leader && rf.heartBeatRev == false {

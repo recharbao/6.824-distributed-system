@@ -232,8 +232,6 @@ type RequestVoteReply struct {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.mu.Lock()
-
-
 	fmt.Printf("Peer[%v] requestVote from Peer[%v]\n", args.CandidateId, rf.me)
 	reply.Term = rf.currentTerm
 	if args.Term < rf.currentTerm {
@@ -415,7 +413,7 @@ func (rf *Raft) WaitForCommit() {
 
 		rf.apply()
 		rf.mu.Unlock()
-		time.Sleep(10 * time.Millisecond)
+		time.Sleep(50 * time.Millisecond)
 	}
 
 }
@@ -462,8 +460,7 @@ func (rf *Raft) ticker() {
 			rf.currentTerm += 1
 			rf.status = candidate
 			rf.voteFor = rf.me
-			fmt.Printf("rf.me: %v\n", rf.me)
-			go rf.LeaderElection()
+			rf.LeaderElection()
 		}
 		rf.heartBeatRev = false
 		rf.persist()
@@ -472,7 +469,6 @@ func (rf *Raft) ticker() {
 }
 
 func (rf *Raft) LeaderElection() {
-	rf.mu.Lock()
 	args := RequestVoteArgs{}
 	args.Term = rf.currentTerm
 	args.CandidateId = rf.me
@@ -483,7 +479,6 @@ func (rf *Raft) LeaderElection() {
 
 	for i := 0; i < len(rf.peers); i++ {
 		if i == rf.me {
-			rf.voteFor = rf.me
 			continue
 		}
 		go func(i int) {
@@ -531,7 +526,6 @@ func (rf *Raft) LeaderElection() {
 
 		rf.received[rf.me] = true
 	}
-	rf.mu.Unlock()
 }
 
 //
@@ -618,6 +612,7 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntri
 		reply.Term = rf.currentTerm
 		rf.status = follower
 		rf.voteFor = args.LeaderId
+		reply.VoteFor = rf.voteFor
 	}
 
 	rf.heartBeatRev = true

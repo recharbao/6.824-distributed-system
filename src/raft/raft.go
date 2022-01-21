@@ -73,7 +73,6 @@ type AppendEntriesReply struct {
 	Term    int
 	FirstConflictIndex int
 	Success		bool
-	VoteFor		int
 }
 
 const (
@@ -232,7 +231,8 @@ type RequestVoteReply struct {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.mu.Lock()
-	fmt.Printf("Peer[%v] requestVote from Peer[%v]\n", args.CandidateId, rf.me)
+	fmt.Printf("Peer[%v] requestVote from Peer[%v] args.term: %v  rf.curterm:%v\n", args.CandidateId, rf.me, args.Term ,rf.currentTerm)
+	rf.heartBeatRev = true
 	reply.Term = rf.currentTerm
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
@@ -240,12 +240,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 
-	rf.currentTerm = args.Term
-	if (args.LastLogTerm > rf.log[len(rf.log)-1].EntryTerm) || (args.LastLogTerm == rf.log[len(rf.log)-1].EntryTerm && args.LastLogIndex >= (len(rf.log)-1)) {
+	if args.Term > rf.currentTerm {
+		rf.currentTerm = args.Term
+		rf.voteFor = -1
+		rf.status = follower
+	}
+	reply.Term = rf.currentTerm
+	if (rf.voteFor == -1 || args.CandidateId == rf.voteFor) && ((args.LastLogTerm > rf.log[len(rf.log)-1].EntryTerm) || (args.LastLogTerm == rf.log[len(rf.log)-1].EntryTerm && args.LastLogIndex >= (len(rf.log)-1))) {
+		fmt.Printf("Peer[%v] requestVote from Peer[%v] term: %v\n", args.CandidateId, rf.me, rf.currentTerm)
 		reply.VoteGranted = true
 		rf.status = follower
 		rf.voteFor = args.CandidateId
-		rf.heartBeatRev = true
 	} else {
 		reply.VoteGranted = false
 	}
@@ -319,7 +324,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	if isLeader {
 		rf.matchIndex[rf.me] = len(rf.log)
 		rf.log = append(rf.log, e)
-		fmt.Printf("start command at Peer[%v]  log: %v\n", rf.me, rf.log)
+		// fmt.Printf("start command at Peer[%v]  log: %v\n", rf.me, rf.log)
 	}
 
 	rf.persist()
@@ -372,7 +377,7 @@ func (rf *Raft) AppendEntriesToServer() {
 								rf.currentTerm = reply.Term
 							}
 							rf.status = follower
-							rf.voteFor = reply.VoteFor
+							rf.voteFor = -1
 						}
 						rf.mu.Unlock()
 						rf.nextIndex[i] = reply.FirstConflictIndex
@@ -383,7 +388,7 @@ func (rf *Raft) AppendEntriesToServer() {
 			}
 		}
 		rf.mu.Unlock()
-		time.Sleep(70 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 
@@ -413,7 +418,7 @@ func (rf *Raft) WaitForCommit() {
 
 		rf.apply()
 		rf.mu.Unlock()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(30 * time.Millisecond)
 	}
 
 }
@@ -447,24 +452,38 @@ func (rf *Raft) killed() bool {
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
 func (rf *Raft) ticker() {
+
+	// ok := false
 	for rf.killed() == false {
 
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
 
-		t := rand.Intn(700-400) + 400
+		t := rand.Intn(2500-2000) + 2000
 		time.Sleep(time.Duration(t) * time.Millisecond)
 		rf.mu.Lock()
 		if rf.status != leader && rf.heartBeatRev == false {
+			// ok = true
 			rf.currentTerm += 1
 			rf.status = candidate
 			rf.voteFor = rf.me
 			rf.LeaderElection()
+			//if rf.heartBeatRev {
+			//	rf.persist()
+			//	rf.mu.Unlock()
+			//	continue
+			//}
 		}
 		rf.heartBeatRev = false
 		rf.persist()
 		rf.mu.Unlock()
+
+		//if ok {
+		//	t := rand.Intn(600-400) + 400
+		//	time.Sleep(time.Duration(t) * time.Millisecond)
+		//	ok = false
+		//}
 	}
 }
 
@@ -489,7 +508,8 @@ func (rf *Raft) LeaderElection() {
 			if reply.Term > rf.currentTerm {
 				rf.currentTerm = reply.Term
 				rf.status = follower
-				rf.voteFor = i
+				rf.voteFor = -1
+				rf.heartBeatRev = true
 			}
 			rf.mu.Unlock()
 		}(i)
@@ -507,7 +527,7 @@ func (rf *Raft) LeaderElection() {
 		}
 	}
 
-	fmt.Printf("leaderElection Peer[%v]: voteForNum: %v  len(peer): %v\n", rf.me, voteForNum, len(rf.peers))
+	fmt.Printf("leaderElection Peer[%v]: voteForNum: %v  len(peer): %v  term: %v\n", rf.me, voteForNum, len(rf.peers), rf.currentTerm)
 
 	if voteForNum > PeersLength/2 && rf.status == candidate {
 		rf.status = leader
@@ -580,8 +600,9 @@ func (rf *Raft) SendAppendEntriesHandler(server int, args *AppendEntriesArgs, re
 func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 
-	fmt.Printf("leaderPeer[%v] sendto followerPeer[%v]  %v\n",args.LeaderId, rf.me, rf.log)
+	// fmt.Printf("leaderPeer[%v] sendto followerPeer[%v]  %v\n",args.LeaderId, rf.me, rf.log)
 
+	// fmt.Printf("leaderPeer[%v] sendto followerPeer[%v]  rf.voteFor: %v rf.curterm:%v args.leaderId: %v  args.term: %v\n",args.LeaderId, rf.me, rf.voteFor, rf.currentTerm, args.LeaderId, args.Term)
 	firstConflict := 1
 
 	if len(rf.log) < len(args.PrevLogTerm) {
@@ -596,10 +617,9 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	reply.Term = rf.currentTerm
-	reply.VoteFor = rf.voteFor
 	reply.FirstConflictIndex = firstConflict
 
-	if (args.Term == rf.currentTerm && rf.voteFor != args.LeaderId) || args.Term < rf.currentTerm {
+	if args.Term < rf.currentTerm {
 		reply.Success = false
 		rf.mu.Unlock()
 		return
@@ -611,11 +631,11 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntri
 		rf.currentTerm = args.Term
 		reply.Term = rf.currentTerm
 		rf.status = follower
-		rf.voteFor = args.LeaderId
-		reply.VoteFor = rf.voteFor
+		rf.voteFor = -1
 	}
 
 	rf.heartBeatRev = true
+	rf.status = follower
 
 	if firstConflict < len(args.PrevLogTerm) {
 		rf.mu.Unlock()

@@ -3,10 +3,11 @@ package kvraft
 import (
 	"labgob"
 	"labrpc"
-	"raft"
 	"log"
+	"raft"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const Debug = false
@@ -23,6 +24,9 @@ type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Operation string
+	Key string
+	value string
 }
 
 type KVServer struct {
@@ -35,15 +39,87 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
-}
 
+	lastApplyIndex int
+	lastApplyTerm int
+
+	commit bool
+
+	kvDatabase map[string]string
+}
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
+	kv.mu.Lock()
+	if args.Key == "" {
+		reply.Err = ErrNoKey
+		kv.mu.Unlock()
+		return
+	}
+
+	op := Op{"Get", args.Key, ""}
+	newEntryindex, term, isLeader := kv.rf.Start(op)
+	if !isLeader {
+		reply.Err = ErrWrongLeader
+		kv.mu.Unlock()
+		return
+	}
+	time.Sleep(200 * time.Millisecond)
+	if len(kv.applyCh) == 0 {
+		reply.Err = ErrWrongLeader
+		kv.mu.Unlock()
+		return
+	}
+	<-kv.applyCh
+	reply.Value = kv.kvDatabase[args.Key]
+	if newEntryindex > kv.lastApplyIndex {
+		kv.lastApplyIndex = newEntryindex
+		kv.lastApplyTerm = term
+	}
+	reply.Err = OK
+	kv.mu.Unlock()
+}
+
+func(kv *KVServer) apply() {
+	for {
+		applyMsg := <-kv.applyCh
+		if applyMsg.SnapshotValid {
+			kv.CondSnapshotToRaft()
+		} else if applyMsg.CommandValid {
+			kv.commit = true
+		}
+	}
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
+	kv.mu.Lock()
+	if args.Key == "" {
+		reply.Err = ErrNoKey
+		kv.mu.Unlock()
+		return
+	}
+	op := Op{args.Op, args.Key, args.Value}
+	newEntryindex, term, isLeader := kv.rf.Start(op)
+	if !isLeader {
+		reply.Err = ErrWrongLeader
+		kv.mu.Unlock()
+		return
+	}
+	time.Sleep(200 * time.Millisecond)
+	if len(kv.applyCh) == 0 {
+		reply.Err = ErrWrongLeader
+		kv.mu.Unlock()
+		return
+	}
+	applyMsg := <-kv.applyCh
+	kv.kvDatabase[args.Key] = args.Value
+	if applyMsg.CommandIndex > kv.lastApplyIndex {
+		kv.lastApplyIndex = newEntryindex
+		kv.lastApplyTerm = term
+	}
+	reply.Err = OK
+	kv.mu.Unlock()
 }
 
 //
@@ -96,6 +172,30 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
+	kv.kvDatabase = make(map[string]string)
 
 	return kv
+}
+
+func (kv *KVServer) SnapshotToRaft(persister *raft.Persister) {
+	for kv.killed() == false {
+		kv.mu.Lock()
+		if persister.RaftStateSize() >= kv.maxraftstate {
+			kv.rf.Snapshot(kv.lastApplyIndex, persister.ReadSnapshot())
+		}
+		kv.mu.Unlock()
+		time.Sleep(500 * time.Millisecond)
+	}
+}
+
+
+func (kv *KVServer) CondSnapshotToRaft() {
+	kv.mu.Lock()
+	applyMsg := <-kv.applyCh
+	kv.rf.CondInstallSnapshot(applyMsg.SnapshotTerm, applyMsg.CommandIndex, applyMsg.Snapshot)
+	kv.mu.Unlock()
+}
+
+func (kv *KVServer) CheckLog() {
+
 }

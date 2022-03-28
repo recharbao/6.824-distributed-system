@@ -1,6 +1,9 @@
 package kvraft
 
-import "labrpc"
+import (
+	"labrpc"
+	"sync"
+)
 import "crypto/rand"
 import "math/big"
 
@@ -8,6 +11,9 @@ import "math/big"
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
+	rpcId int64
+	clientId int64
+	mu      sync.Mutex
 }
 
 func nrand() int64 {
@@ -20,6 +26,8 @@ func nrand() int64 {
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
+	ck.rpcId = 0
+	ck.clientId = nrand()
 	// You'll have to add code here.
 	return ck
 }
@@ -38,23 +46,31 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 //
 func (ck *Clerk) Get(key string) string {
 	// You will have to modify this function.
+	ck.mu.Lock()
 	args := GetArgs{}
 	args.Key = key
+	args.ClientId = ck.clientId
+	ck.rpcId += 1
+	args.RpcId = ck.rpcId
 	reply := GetReply{}
 
 	for {
 		for i := 0; i < len(ck.servers); i++ {
 			ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
 			if ok && reply.Err == OK {
+				ck.mu.Unlock()
 				return reply.Value
 			}
 			if ok && reply.Err == ErrNoKey {
-				return ""
+				ck.mu.Unlock()
+				return "-1"
 			}
 		}
 	}
 
-	return ""
+	ck.mu.Unlock()
+
+	return "-2"
 }
 
 //
@@ -69,44 +85,36 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
-	if op == "Put" {
-		args := PutAppendArgs{}
-		args.Key = key
-		args.Value = value
-		reply := PutAppendReply{}
-		for {
-			for i := 0; i < len(ck.servers); i++ {
-				ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
-				if ok && reply.Err == OK {
-					return
-				}
-				if ok && reply.Err == ErrNoKey {
-					return
-				}
+	ck.mu.Lock()
+	args := PutAppendArgs{}
+	args.Key = key
+	args.Value = value
+	args.Op = op
+	ck.rpcId += 1
+	args.RpcId = ck.rpcId
+	args.ClientId = ck.clientId
+	reply := PutAppendReply{}
+	for {
+		for i := 0; i < len(ck.servers); i++ {
+			ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+			if ok && reply.Err == OK {
+				ck.mu.Unlock()
+				return
 			}
-		}
-	} else if op == "Append" {
-		args := PutAppendArgs{}
-		args.Key = key
-		args.Value = value
-		reply := PutAppendReply{}
-		for {
-			for i := 0; i < len(ck.servers); i++ {
-				ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
-				if ok && reply.Err == OK {
-					return
-				}
-				if ok && reply.Err == ErrNoKey {
-					return
-				}
+			if ok && reply.Err == ErrNoKey {
+				ck.mu.Unlock()
+				return
 			}
 		}
 	}
+
+	ck.mu.Unlock()
 }
 
 func (ck *Clerk) Put(key string, value string) {
 	ck.PutAppend(key, value, "Put")
 }
+
 func (ck *Clerk) Append(key string, value string) {
 	ck.PutAppend(key, value, "Append")
 }

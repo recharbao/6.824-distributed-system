@@ -24,9 +24,9 @@ type Op struct {
 	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
-	Operation string
+	OpType string
 	Key string
-	value string
+	Value string
 }
 
 type KVServer struct {
@@ -41,11 +41,10 @@ type KVServer struct {
 	// Your definitions here.
 
 	lastApplyIndex int
-	lastApplyTerm int
-
-	commit bool
 
 	kvDatabase map[string]string
+
+	clientRpc map[int64]int64
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -57,36 +56,51 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		return
 	}
 
+	rpcId, ok := kv.clientRpc[args.ClientId]
+	if ok && args.RpcId == rpcId {
+		reply.Err = OK
+		reply.Value, ok = kv.kvDatabase[args.Key]
+		kv.mu.Unlock()
+		return
+	}
+
 	op := Op{"Get", args.Key, ""}
-	newEntryindex, term, isLeader := kv.rf.Start(op)
+	entryIndex, _, isLeader := kv.rf.Start(op)
 	if !isLeader {
 		reply.Err = ErrWrongLeader
 		kv.mu.Unlock()
 		return
 	}
-	time.Sleep(200 * time.Millisecond)
-	if len(kv.applyCh) == 0 {
-		reply.Err = ErrWrongLeader
-		kv.mu.Unlock()
-		return
+
+	for kv.lastApplyIndex < entryIndex {
+		time.Sleep(100 * time.Millisecond)
 	}
-	<-kv.applyCh
-	reply.Value = kv.kvDatabase[args.Key]
-	if newEntryindex > kv.lastApplyIndex {
-		kv.lastApplyIndex = newEntryindex
-		kv.lastApplyTerm = term
-	}
+
+	reply.Value, ok = kv.kvDatabase[args.Key]
+
+	kv.clientRpc[args.ClientId] = args.RpcId
+
 	reply.Err = OK
 	kv.mu.Unlock()
 }
 
-func(kv *KVServer) apply() {
+func(kv *KVServer) ServerApply() {
 	for {
 		applyMsg := <-kv.applyCh
 		if applyMsg.SnapshotValid {
-			kv.CondSnapshotToRaft()
+			// kv.CondSnapshotToRaft()
+			kv.lastApplyIndex = applyMsg.SnapshotIndex
 		} else if applyMsg.CommandValid {
-			kv.commit = true
+			keyValue := applyMsg.Command.(Op)
+
+			if keyValue.OpType == "Append" {
+				s := kv.kvDatabase[keyValue.Key]
+				s += keyValue.Value
+				kv.kvDatabase[keyValue.Key] = s
+			} else if keyValue.OpType == "Put" {
+				kv.kvDatabase[keyValue.Key] = keyValue.Value
+			}
+			kv.lastApplyIndex = applyMsg.CommandIndex
 		}
 	}
 }
@@ -99,25 +113,29 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		kv.mu.Unlock()
 		return
 	}
+
+
+	rpcId, ok := kv.clientRpc[args.ClientId]
+	if ok && args.RpcId == rpcId {
+		reply.Err = OK
+		kv.mu.Unlock()
+		return
+	}
+
 	op := Op{args.Op, args.Key, args.Value}
-	newEntryindex, term, isLeader := kv.rf.Start(op)
+	entryIndex, _, isLeader := kv.rf.Start(op)
 	if !isLeader {
 		reply.Err = ErrWrongLeader
 		kv.mu.Unlock()
 		return
 	}
-	time.Sleep(200 * time.Millisecond)
-	if len(kv.applyCh) == 0 {
-		reply.Err = ErrWrongLeader
-		kv.mu.Unlock()
-		return
+
+	for kv.lastApplyIndex < entryIndex {
+		time.Sleep(100 * time.Millisecond)
 	}
-	applyMsg := <-kv.applyCh
-	kv.kvDatabase[args.Key] = args.Value
-	if applyMsg.CommandIndex > kv.lastApplyIndex {
-		kv.lastApplyIndex = newEntryindex
-		kv.lastApplyTerm = term
-	}
+
+	kv.clientRpc[args.ClientId] = args.RpcId
+
 	reply.Err = OK
 	kv.mu.Unlock()
 }
@@ -173,6 +191,10 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 
 	// You may need initialization code here.
 	kv.kvDatabase = make(map[string]string)
+
+	kv.clientRpc = make(map[int64]int64)
+
+	go kv.ServerApply()
 
 	return kv
 }

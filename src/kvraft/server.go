@@ -77,7 +77,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 
 	for kv.lastApplyIndex < entryIndex {
-		time.Sleep(100 * time.Millisecond)
+		//time.Sleep(100 * time.Millisecond)
 	}
 
 	reply.Value, ok = kv.kvDatabase[args.Key]
@@ -146,7 +146,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 
 	for kv.lastApplyIndex < entryIndex {
-		time.Sleep(100 * time.Millisecond)
+		//time.Sleep(100 * time.Millisecond)
 	}
 
 	kv.clientRpc[args.ClientId] = args.RpcId

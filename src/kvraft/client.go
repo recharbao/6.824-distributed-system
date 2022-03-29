@@ -14,6 +14,7 @@ type Clerk struct {
 	rpcId int64
 	clientId int64
 	mu      sync.Mutex
+	leaderId int
 }
 
 func nrand() int64 {
@@ -28,6 +29,7 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck.servers = servers
 	ck.rpcId = 0
 	ck.clientId = nrand()
+	ck.leaderId = 0
 	// You'll have to add code here.
 	return ck
 }
@@ -54,10 +56,20 @@ func (ck *Clerk) Get(key string) string {
 	args.RpcId = ck.rpcId
 	reply := GetReply{}
 
+	findLeader := true
+	initIndex := ck.leaderId
+
 	for {
-		for i := 0; i < len(ck.servers); i++ {
+
+		if !findLeader {
+			initIndex = 0
+			findLeader = false
+		}
+
+		for i := initIndex; i < len(ck.servers); i++ {
 			ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
 			if ok && reply.Err == OK {
+				ck.leaderId = i
 				ck.mu.Unlock()
 				return reply.Value
 			}
@@ -94,10 +106,19 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.RpcId = ck.rpcId
 	args.ClientId = ck.clientId
 	reply := PutAppendReply{}
+	findLeader := true
+	initIndex := ck.leaderId
 	for {
-		for i := 0; i < len(ck.servers); i++ {
+
+		if !findLeader {
+			initIndex = 0
+			findLeader = false
+		}
+
+		for i := initIndex; i < len(ck.servers); i++ {
 			ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
 			if ok && reply.Err == OK {
+				ck.leaderId = i
 				ck.mu.Unlock()
 				return
 			}

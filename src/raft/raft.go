@@ -524,6 +524,7 @@ func (rf *Raft) AppendEntriesToServer() {
 			}
 		}
 		rf.mu.Unlock()
+		//time.Sleep(27 * time.Millisecond)
 		time.Sleep(100 * time.Millisecond)
 	}
 }

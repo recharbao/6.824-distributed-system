@@ -158,7 +158,7 @@ func (rf *Raft) Persist() {
 	e.Encode(rf.log)
 	e.Encode(rf.lastIncludedTerm)
 	e.Encode(rf.lastIncludedIndex)
-	e.Encode(rf.lastApplied)
+	e.Encode(rf.commitIndex)
 	e.Encode(rf.isSnapshot)
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
@@ -188,7 +188,7 @@ func (rf *Raft) readPersist(data []byte) {
 	r := bytes.NewBuffer(data)
 	d := labgob.NewDecoder(r)
 
-	if d.Decode(&rf.currentTerm) != nil || d.Decode(&rf.voteFor) != nil || d.Decode(&rf.log) != nil || d.Decode(&rf.lastIncludedTerm) != nil || d.Decode(&rf.lastIncludedIndex) != nil || d.Decode(&rf.lastApplied) != nil || d.Decode(&rf.isSnapshot) != nil{
+	if d.Decode(&rf.currentTerm) != nil || d.Decode(&rf.voteFor) != nil || d.Decode(&rf.log) != nil || d.Decode(&rf.lastIncludedTerm) != nil || d.Decode(&rf.lastIncludedIndex) != nil || d.Decode(&rf.isSnapshot) != nil{
 		fmt.Printf("readPersist error !")
 	}
 }
@@ -209,7 +209,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	e.Encode(rf.log)
 	e.Encode(rf.lastIncludedTerm)
 	e.Encode(rf.lastIncludedIndex)
-	e.Encode(rf.lastApplied)
+	e.Encode(rf.commitIndex)
 	e.Encode(rf.isSnapshot)
 	state := w.Bytes()
 
@@ -242,7 +242,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	e.Encode(rf.log)
 	e.Encode(rf.lastIncludedTerm)
 	e.Encode(rf.lastIncludedIndex)
-	e.Encode(rf.lastApplied)
+	e.Encode(rf.commitIndex)
 	e.Encode(rf.isSnapshot)
 	state := w.Bytes()
 
@@ -708,7 +708,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.heartBeatRev = false
 	rf.voteFor = -1
 	rf.currentTerm = 0
-	rf.lastApplied = 0
+
 	rf.status = follower
 	rf.applyCh = applyCh
 	rf.isSnapshot = false
@@ -720,7 +720,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	e.EntryTerm = 0
 	e.EntryIndex = 0
 	rf.log = append(rf.log, e)
-
+	rf.lastApplied = 0
 	rf.commitIndex = 0
 
 	// Your initialization code here (2A, 2B, 2C).
@@ -864,6 +864,7 @@ func (rf *Raft) apply() {
 			applymsg := ApplyMsg{}
 			applymsg.Command = rf.log[i].Command
 			rf.lastApplied = rf.log[i].EntryIndex
+			fmt.Printf("Peer[%v]  rf.commitIndex: %v  rf.lastApplied: %v  rf.log[i].EntryIndex: %v \n",rf.me, rf.commitIndex, rf.lastApplied, rf.log[i].EntryIndex)
 			applymsg.CommandIndex = rf.log[i].EntryIndex
 			applymsg.CommandValid = true
 			applymsg.SnapshotValid = false

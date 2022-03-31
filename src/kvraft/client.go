@@ -1,6 +1,7 @@
 package kvraft
 
 import (
+	"fmt"
 	"labrpc"
 	"sync"
 )
@@ -56,18 +57,21 @@ func (ck *Clerk) Get(key string) string {
 	args.RpcId = ck.rpcId
 	reply := GetReply{}
 
-	findLeader := true
-	initIndex := ck.leaderId
+	//findLeader := true
+	//initIndex := ck.leaderId
 
 	for {
 
-		if !findLeader {
-			initIndex = 0
-			findLeader = false
-		}
+		//if !findLeader {
+		//	initIndex = 0
+		//	findLeader = false
+		//}
 
-		for i := initIndex; i < len(ck.servers); i++ {
+		for i := 0; i < len(ck.servers); i++ {
 			ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
+
+			fmt.Printf("len(ck.servers): %v call server[%v] ok: %v reply.Err: %v \n", len(ck.servers), i, ok, reply.Err)
+
 			if ok && reply.Err == OK {
 				ck.leaderId = i
 				ck.mu.Unlock()
@@ -106,17 +110,18 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	args.RpcId = ck.rpcId
 	args.ClientId = ck.clientId
 	reply := PutAppendReply{}
-	findLeader := true
-	initIndex := ck.leaderId
+	//findLeader := true
+	//initIndex := ck.leaderId
 	for {
 
-		if !findLeader {
-			initIndex = 0
-			findLeader = false
-		}
+		//if !findLeader {
+		//	initIndex = 0
+		//	findLeader = false
+		//}
 
-		for i := initIndex; i < len(ck.servers); i++ {
+		for i := 0; i < len(ck.servers); i++ {
 			ok := ck.servers[i].Call("KVServer.PutAppend", &args, &reply)
+			fmt.Printf("len(ck.servers): %v call server[%v] ok: %v reply.Err: %v \n",len(ck.servers), i, ok, reply.Err)
 			if ok && reply.Err == OK {
 				ck.leaderId = i
 				ck.mu.Unlock()

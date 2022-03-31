@@ -4,6 +4,8 @@ const (
 	OK             = "OK"
 	ErrNoKey       = "ErrNoKey"
 	ErrWrongLeader = "ErrWrongLeader"
+	ErrWrongLeaderFor = "ErrWrongLeaderFor"
+	TooLongTime = "TooLongTime"
 )
 
 type Err string

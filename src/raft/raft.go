@@ -121,6 +121,8 @@ type Raft struct {
 
 	lastIncludedTerm int
 	lastIncludedIndex int
+
+	ConInstallSnapshotEnd bool
 }
 
 // return currentTerm and whether this server
@@ -227,6 +229,8 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	state := w.Bytes()
 
 	rf.persister.SaveStateAndSnapshot(state, snapshot)
+
+	rf.ConInstallSnapshotEnd = true
 
 	return true
 }
@@ -488,6 +492,16 @@ func (rf *Raft) InstallSnapshotHandler(args *InstallSnapshotArgs, reply *Install
 	fmt.Printf("rf.lastApplied: %v  args.LastIncludeIndex: %v \n", rf.lastApplied, args.LastIncludeIndex)
 
 	rf.applyCh <- applyMsg
+
+	t := 0
+	for !rf.ConInstallSnapshotEnd && t < 10 {
+		time.Sleep(10 * time.Millisecond)
+		t++
+		fmt.Printf("++++++++++++++++++++++++++++++++++++ InstallSnapshotHandler ++++++++++++++++++++++++++++++++++++++++++\n")
+	}
+
+	rf.ConInstallSnapshotEnd = false
+
 	rf.lastApplied = args.LastIncludeIndex
 
 	rf.Persist()
@@ -765,6 +779,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.log = append(rf.log, e)
 
 	rf.commitIndex = 0
+
+	rf.ConInstallSnapshotEnd = false
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())

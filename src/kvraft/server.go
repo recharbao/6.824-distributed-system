@@ -33,6 +33,17 @@ type Op struct {
 	RpcId int64
 }
 
+type kvDatabaseSync struct {
+	sync.RWMutex
+	kvDatabase map[string]string
+}
+
+type clientRpcSync struct {
+	sync.RWMutex
+	clientRpc map[int64]int64
+}
+
+
 type KVServer struct {
 	mu      sync.Mutex
 	me      int
@@ -46,9 +57,9 @@ type KVServer struct {
 
 	lastApplyIndex int
 
-	kvDatabase map[string]string
+	kvDatabaseSync kvDatabaseSync
 
-	clientRpc map[int64]int64
+	clientRpcSync clientRpcSync
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -60,12 +71,17 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		kv.mu.Unlock()
 		return
 	}
+
 	fmt.Printf("before Get=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
 
-	rpcId, ok := kv.clientRpc[args.ClientId]
+	kv.clientRpcSync.RLock()
+	rpcId, ok := kv.clientRpcSync.clientRpc[args.ClientId]
+	kv.clientRpcSync.RUnlock()
 	if ok && args.RpcId == rpcId {
 		reply.Err = OK
-		reply.Value, ok = kv.kvDatabase[args.Key]
+		kv.kvDatabaseSync.RLock()
+		reply.Value = kv.kvDatabaseSync.kvDatabase[args.Key]
+		kv.kvDatabaseSync.RUnlock()
 		kv.mu.Unlock()
 		return
 	}
@@ -97,7 +113,9 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		}
 	}
 
-	reply.Value, ok = kv.kvDatabase[args.Key]
+	kv.kvDatabaseSync.RLock()
+	reply.Value, ok = kv.kvDatabaseSync.kvDatabase[args.Key]
+	kv.kvDatabaseSync.RUnlock()
 
 	// kv.clientRpc[args.ClientId] = args.RpcId
 
@@ -113,7 +131,7 @@ func(kv *KVServer) ServerApply() {
 			if kv.rf.CondInstallSnapshot(applyMsg.SnapshotTerm, applyMsg.SnapshotIndex, applyMsg.Snapshot) {
 				r := bytes.NewBuffer(applyMsg.Snapshot)
 				d := labgob.NewDecoder(r)
-				if d.Decode(&kv.lastApplyIndex) != nil || d.Decode(&kv.kvDatabase) != nil {
+				if d.Decode(&kv.lastApplyIndex) != nil || d.Decode(&kv.kvDatabaseSync.kvDatabase) != nil {
 					fmt.Printf("readSnapshot error ! \n")
 				}
 				kv.lastApplyIndex = applyMsg.SnapshotIndex
@@ -121,23 +139,33 @@ func(kv *KVServer) ServerApply() {
 		} else if applyMsg.CommandValid {
 			keyValue := applyMsg.Command.(Op)
 			// fmt.Printf("rpcId: %v \n", keyValue.rpcId)
-			rpcId, ok := kv.clientRpc[keyValue.ClientId]
-			fmt.Printf("applyMsg.CommandIndex: %v   kv.clientRpc: %v  keyValue.clientId:  %v keyValue.rpcId: %v keyvalue.key: %v  keyValue.Value: %v \n",applyMsg.CommandIndex, kv.clientRpc, keyValue.ClientId, keyValue.RpcId, keyValue.Key, keyValue.Value)
+			kv.clientRpcSync.RLock()
+			rpcId, ok := kv.clientRpcSync.clientRpc[keyValue.ClientId]
+			kv.clientRpcSync.RUnlock()
+			fmt.Printf("applyMsg.CommandIndex: %v   kv.clientRpc: %v  keyValue.clientId:  %v keyValue.rpcId: %v keyvalue.key: %v  keyValue.Value: %v \n",applyMsg.CommandIndex, kv.clientRpcSync.clientRpc, keyValue.ClientId, keyValue.RpcId, keyValue.Key, keyValue.Value)
 			if ok && rpcId == keyValue.RpcId {
 				kv.lastApplyIndex = applyMsg.CommandIndex
 				continue
 			}
 
 			if keyValue.OpType == "Append" {
-				s := kv.kvDatabase[keyValue.Key]
+				kv.kvDatabaseSync.RLock()
+				s := kv.kvDatabaseSync.kvDatabase[keyValue.Key]
+				kv.kvDatabaseSync.RUnlock()
 				s += keyValue.Value
-				kv.kvDatabase[keyValue.Key] = s
+				kv.kvDatabaseSync.Lock()
+				kv.kvDatabaseSync.kvDatabase[keyValue.Key] = s
+				kv.kvDatabaseSync.Unlock()
 			} else if keyValue.OpType == "Put" {
-				kv.kvDatabase[keyValue.Key] = keyValue.Value
+				kv.kvDatabaseSync.Lock()
+				kv.kvDatabaseSync.kvDatabase[keyValue.Key] = keyValue.Value
+				kv.kvDatabaseSync.Unlock()
 			}
 
 			kv.lastApplyIndex = applyMsg.CommandIndex
-			kv.clientRpc[keyValue.ClientId] = keyValue.RpcId
+			kv.clientRpcSync.Lock()
+			kv.clientRpcSync.clientRpc[keyValue.ClientId] = keyValue.RpcId
+			kv.clientRpcSync.Unlock()
 		}
 	}
 }
@@ -153,7 +181,9 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	}
 
 	fmt.Printf("before put=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
-	rpcId, ok := kv.clientRpc[args.ClientId]
+	kv.clientRpcSync.RLock()
+	rpcId, ok := kv.clientRpcSync.clientRpc[args.ClientId]
+	kv.clientRpcSync.RUnlock()
 	if ok && args.RpcId == rpcId {
 		reply.Err = OK
 		kv.mu.Unlock()
@@ -243,14 +273,16 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
 	// You may need initialization code here.
-	kv.kvDatabase = make(map[string]string)
+	kv.kvDatabaseSync = kvDatabaseSync{}
+	kv.kvDatabaseSync.kvDatabase = make(map[string]string)
 
-	kv.clientRpc = make(map[int64]int64)
+	kv.clientRpcSync = clientRpcSync{}
+	kv.clientRpcSync.clientRpc = make(map[int64]int64)
 
 
 	r := bytes.NewBuffer(persister.ReadSnapshot())
 	d := labgob.NewDecoder(r)
-	if d.Decode(&kv.lastApplyIndex) != nil || d.Decode(&kv.kvDatabase) != nil {
+	if d.Decode(&kv.lastApplyIndex) != nil || d.Decode(&kv.kvDatabaseSync.kvDatabase) != nil {
 		fmt.Printf("readSnapshot error ! \n")
 	}
 
@@ -270,7 +302,7 @@ func (kv *KVServer) SnapshotToRaft(persister *raft.Persister) {
 			w := new(bytes.Buffer)
 			e := labgob.NewEncoder(w)
 			e.Encode(kv.lastApplyIndex)
-			e.Encode(kv.kvDatabase)
+			e.Encode(kv.kvDatabaseSync.kvDatabase)
 			snapshot := w.Bytes()
 			kv.rf.Snapshot(kv.lastApplyIndex, snapshot)
 		}

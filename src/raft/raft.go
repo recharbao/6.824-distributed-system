@@ -163,7 +163,6 @@ func (rf *Raft) Persist() {
 	e.Encode(rf.commitIndex)
 	e.Encode(rf.isSnapshot)
 	e.Encode(rf.logAfterSnapshotFirstIndex)
-	//e.Encode(rf.lastApplied)
 	data := w.Bytes()
 	rf.persister.SaveRaftState(data)
 }
@@ -204,7 +203,6 @@ func (rf *Raft) readPersist(data []byte) {
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
 	// Your code here (2D).
-	fmt.Printf(")))))))))))))))))))))))))))) CondInstallSnapshot: %v \n", lastIncludedIndex)
 	if lastIncludedIndex < rf.log[0].EntryIndex || lastIncludedIndex - rf.log[0].EntryIndex >= len(rf.log) {
 		return false
 	}
@@ -225,7 +223,6 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	e.Encode(rf.commitIndex)
 	e.Encode(rf.isSnapshot)
 	e.Encode(rf.logAfterSnapshotFirstIndex)
-	//e.Encode(rf.lastApplied)
 	state := w.Bytes()
 
 	rf.persister.SaveStateAndSnapshot(state, snapshot)
@@ -262,7 +259,6 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	e.Encode(rf.commitIndex)
 	e.Encode(rf.isSnapshot)
 	e.Encode(rf.logAfterSnapshotFirstIndex)
-	//e.Encode(rf.lastApplied)
 	state := w.Bytes()
 
 	rf.persister.SaveStateAndSnapshot(state, snapshot)
@@ -330,7 +326,6 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	reply.Term = rf.currentTerm
 	if (rf.voteFor == -1 || args.CandidateId == rf.voteFor) && ((args.LastLogTerm > rf.log[len(rf.log)-1].EntryTerm) || (args.LastLogTerm == rf.log[len(rf.log)-1].EntryTerm && args.LastLogIndex >= rf.log[(len(rf.log)-1)].EntryIndex)) {
-		// fmt.Printf("Peer[%v] requestVote from Peer[%v] term: %v\n", args.CandidateId, rf.me, rf.currentTerm)
 		reply.VoteGranted = true
 		rf.status = follower
 		rf.voteFor = args.CandidateId
@@ -409,7 +404,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := (rf.status == leader)
 
 	if isLeader {
-		fmt.Printf("start command at Peer[%v]  log: %v  e: %v \n", rf.me, rf.log, e)
 		rf.matchIndex[rf.me] = e.EntryIndex
 		rf.log = append(rf.log, e)
 	}
@@ -489,7 +483,6 @@ func (rf *Raft) InstallSnapshotHandler(args *InstallSnapshotArgs, reply *Install
 	applyMsg.SnapshotTerm = args.LastIncludeTerm
 	applyMsg.Snapshot = args.Data
 
-	fmt.Printf("rf.lastApplied: %v  args.LastIncludeIndex: %v \n", rf.lastApplied, args.LastIncludeIndex)
 
 	rf.applyCh <- applyMsg
 
@@ -497,7 +490,6 @@ func (rf *Raft) InstallSnapshotHandler(args *InstallSnapshotArgs, reply *Install
 	for !rf.ConInstallSnapshotEnd && t < 10 {
 		time.Sleep(10 * time.Millisecond)
 		t++
-		fmt.Printf("++++++++++++++++++++++++++++++++++++ InstallSnapshotHandler ++++++++++++++++++++++++++++++++++++++++++\n")
 	}
 
 	rf.ConInstallSnapshotEnd = false
@@ -511,8 +503,6 @@ func (rf *Raft) InstallSnapshotHandler(args *InstallSnapshotArgs, reply *Install
 func (rf *Raft) AppendEntriesToServer() {
 
 	for rf.killed() == false {
-
-		// fmt.Printf("Peer[%v]: %v\n", rf.me, rf.status)
 		rf.mu.Lock()
 		if rf.isSnapshot {
 			rf.log = rf.log[rf.logAfterSnapshotFirstIndex : len(rf.log)]
@@ -569,7 +559,6 @@ func (rf *Raft) AppendEntriesToServer() {
 			}
 		}
 		rf.mu.Unlock()
-		//time.Sleep(27 * time.Millisecond)
 		time.Sleep(100 * time.Millisecond)
 	}
 }
@@ -648,29 +637,16 @@ func (rf *Raft) ticker() {
 
 		t := rand.Intn(2500-2000) + 2000
 		time.Sleep(time.Duration(t) * time.Millisecond)
-		fmt.Printf("Peer[%v]   rf.currentTerm: %v \n", rf.me, rf.currentTerm)
 		rf.mu.Lock()
 		if rf.status != leader && rf.heartBeatRev == false {
-			// ok = true
 			rf.currentTerm += 1
 			rf.status = candidate
 			rf.voteFor = rf.me
 			rf.LeaderElection()
-			//if rf.heartBeatRev {
-			//	rf.persist()
-			//	rf.mu.Unlock()
-			//	continue
-			//}
 		}
 		rf.heartBeatRev = false
 		rf.Persist()
 		rf.mu.Unlock()
-
-		//if ok {
-		//	t := rand.Intn(600-400) + 400
-		//	time.Sleep(time.Duration(t) * time.Millisecond)
-		//	ok = false
-		//}
 	}
 }
 
@@ -727,7 +703,6 @@ func (rf *Raft) LeaderElection() {
 	if voteForNum > PeersLength/2 && rf.status == candidate {
 		rf.status = leader
 		rf.nextIndex = make([]int, len(rf.peers))
-		// rf.matchIndex = make([]int, len(rf.peers))
 		rf.received = make([]bool, len(rf.peers))
 
 		for i := 0; i < len(rf.peers); i++ {
@@ -815,12 +790,10 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntri
 		rf.log = rf.log[rf.logAfterSnapshotFirstIndex : len(rf.log)]
 		rf.isSnapshot = false
 	}
-	// fmt.Printf("leaderPeer[%v] sendto followerPeer[%v]  %v\n",args.LeaderId, rf.me, rf.log)
 
 	fmt.Printf("leaderPeer[%v] sendto followerPeer[%v]  rf.voteFor: %v rf.curterm:%v rf.commitIndex: %v rf.lastApplied: %v args.leaderId: %v  args.term: %v  args.PrevLogIndex: %v  args.Entries: %v   rf.log: %v \n",args.LeaderId, rf.me, rf.voteFor, rf.currentTerm, rf.commitIndex, rf.lastApplied, args.LeaderId, args.Term, args.PrevLogIndex, args.Entries, rf.log)
 	leaderFirstConflict := 1
 	followerFirstConflict := len(rf.log)
-	// fmt.Printf("rf.log[len(rf.log) - 1].EntryIndex : %v   len(args.PrevLogIndex) - 1 : %v  \n", rf.log[len(rf.log) - 1].EntryIndex, len(args.PrevLogIndex) - 1)
 	if len(args.PrevLogIndex) == 0 {
 		leaderFirstConflict = 0
 		followerFirstConflict = 0
@@ -850,7 +823,6 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	reply.Term = rf.currentTerm
-	//reply.FirstConflictIndex = leaderFirstConflict
 	if len(args.PrevLogIndex) > 0 {
 		if leaderFirstConflict > 0 {
 			reply.FirstConflictIndex = args.PrevLogIndex[leaderFirstConflict - 1] + 1
@@ -881,8 +853,6 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntri
 	rf.heartBeatRev = true
 	rf.status = follower
 
-	fmt.Printf("leaderFirstConflict: %v\n", leaderFirstConflict)
-
 	if leaderFirstConflict < len(args.PrevLogTerm) {
 		rf.mu.Unlock()
 		return
@@ -892,11 +862,7 @@ func (rf *Raft) AppendEntriesHandler(args *AppendEntriesArgs, reply *AppendEntri
 	rf.log = rf.log[0 : followerFirstConflict]
 
 	for i := 0; i < len(args.Entries); i++ {
-		// if followerFirstConflict + i >= len(rf.log){
-			rf.log = append(rf.log, args.Entries[i])
-		// } else {
-		//	rf.log[followerFirstConflict + i] = args.Entries[i]
-		// }
+		rf.log = append(rf.log, args.Entries[i])
 	}
 
 	if args.LeaderCommit > rf.commitIndex {
@@ -926,11 +892,9 @@ func (rf *Raft) apply() {
 			}
 		}
 
-		fmt.Printf("Peer[%v] i: %v  end: %v\n",rf.me, i, end)
 		for ; i <= end; i++ {
 			applymsg := ApplyMsg{}
 			applymsg.Command = rf.log[i].Command
-			fmt.Printf("Peer[%v]  rf.commitIndex: %v  rf.lastApplied: %v  rf.log[i].EntryIndex: %v \n",rf.me, rf.commitIndex, rf.lastApplied, rf.log[i].EntryIndex)
 			applymsg.CommandIndex = rf.log[i].EntryIndex
 			applymsg.CommandValid = true
 			applymsg.SnapshotValid = false

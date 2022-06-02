@@ -57,16 +57,7 @@ func (ck *Clerk) Get(key string) string {
 	args.RpcId = ck.rpcId
 	reply := GetReply{}
 
-	//findLeader := true
-	//initIndex := ck.leaderId
-
 	for {
-
-		//if !findLeader {
-		//	initIndex = 0
-		//	findLeader = false
-		//}
-
 		for i := 0; i < len(ck.servers); i++ {
 			ok := ck.servers[i].Call("KVServer.Get", &args, &reply)
 

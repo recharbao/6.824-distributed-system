@@ -14,13 +14,6 @@ import "os"
 import "sort"
 import "encoding/json"
 
-var   (
-
-	doTaskLogFileName = flag.String("log1", "doTask.log", "Log file name")
-	interdiFilelogName = flag.String("log3", "inter.log", "Log file name")
-
-	)
-
 //
 // Map functions return a slice of KeyValue.
 //
@@ -69,7 +62,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	w.workerStatus = 1
 
 	w.register()
-	//fmt.Printf("here !")
+	
 	w.doTask()
 
 	// uncomment to send the Example RPC to the coordinator.
@@ -84,13 +77,10 @@ func (w *worker)register() {
 	call("Coordinator.Register", &args, &reply)
 	w.mapTaskSum = reply.MapTaskSum
 	w.reduceTaskSum = reply.ReduceTaskSum
-	// fmt.Printf("register mapTaskSum = %v\n", reply.MapTaskSum)
 	w.workid = reply.Workid
-	// fmt.Printf("here !")
 }
 
 func reportTaskStatus(taskid int, mapOrReduce int) {
-	//fmt.Printf("herhe !\n")
 	args := TaskArgs{}
 	args.Taskid = taskid
 	args.Status = doing
@@ -101,30 +91,16 @@ func reportTaskStatus(taskid int, mapOrReduce int) {
 
 
 func  requestTask() (TaskReply, bool) {
-	// fmt.Printf("here !\n")
 	args := TaskArgs{}
 	reply:= TaskReply{}
 	ok := call("Coordinator.RequestTask", &args, &reply)
-	//log.Printf("here !")
 	return reply, ok
 }
 
 func (w *worker)doTask() {
 	for {
-		// fmt.Printf("here !\n")
 		task, ok := requestTask()
-		{
-			logFile, logErr := os.OpenFile(*doTaskLogFileName, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-			if logErr != nil{
-				fmt.Printf("log error !\n")
-			}
-
-			log.SetOutput(logFile)
-			log.SetFlags(log.Ldate | log.Lmicroseconds | log.Ltime | log.Lshortfile)
-			log.Printf("task file = %v\n", task.FileName)
-			log.Printf("dotask  MapOrReduce = %v\n", task.MapOrReduce)
-		}
-
+	
 		if !ok {
 			log.Printf("fail to requestTask!\n")
 		}
@@ -133,17 +109,11 @@ func (w *worker)doTask() {
 			continue
 		}
 
-		fmt.Printf("dotest task_id = %v\n", task.Taskid)
-		fmt.Printf("dotest task_Status = %v\n", task.Status)
-
-		fmt.Printf("task test end = %v\n", task.MapOrReduce)
 		if task.MapOrReduce == end {
 			fmt.Printf("return worker !\n")
 			return
 		}
 
-		fmt.Printf("w.reduceTaskSum = %v\n", w.reduceTaskSum)
-		//log.Printf("here !\n")
 		if task.MapOrReduce == mapphase {
 			doMap(w.mapf, task.FileName, task.Taskid, w.reduceTaskSum)
 			reportTaskStatus(task.Taskid, mapphase)
@@ -218,18 +188,6 @@ func doReduce(reducef func(string, []string) string, outputFile string, reduceTa
 		if err != nil {
 			fmt.Printf("doReudce can not open %v", intermediateFileName)
 		}
-
-		{
-			logFile, logErr := os.OpenFile(*interdiFilelogName, os.O_CREATE|os.O_RDWR|os.O_APPEND, 0666)
-			if logErr != nil{
-				fmt.Printf("log error !\n")
-			}
-
-			log.SetOutput(logFile)
-			log.SetFlags(log.Ldate | log.Lmicroseconds | log.Ltime | log.Lshortfile)
-			log.Printf("intermeidateFileName = %q\n", intermediateFileName)
-			log.Printf("err = %d\n", err)
-		}
 	}
 
 	// decoder json
@@ -296,7 +254,6 @@ func doReduce(reducef func(string, []string) string, outputFile string, reduceTa
 //
 func call(rpcname string, args interface{}, reply interface{}) bool {
 	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
-	//log.Printf("here !\n")
 	sockname := coordinatorSock()
 	c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {

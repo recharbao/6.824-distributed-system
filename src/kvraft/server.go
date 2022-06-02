@@ -64,15 +64,12 @@ type KVServer struct {
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	// Your code here.
-	fmt.Printf("before lock Get=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
 	kv.mu.Lock()
 	if args.Key == "" {
 		reply.Err = ErrNoKey
 		kv.mu.Unlock()
 		return
 	}
-
-	fmt.Printf("before Get=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
 
 	kv.clientRpcSync.RLock()
 	rpcId, ok := kv.clientRpcSync.clientRpc[args.ClientId]
@@ -86,7 +83,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		return
 	}
 
-	fmt.Printf("Get=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
 	op := Op{"Get", args.Key, "", args.ClientId, args.RpcId}
 	entryIndex, _, isLeader := kv.rf.Start(op)
 	if !isLeader {
@@ -97,7 +93,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 
 	t := 0
 	for  kv.lastApplyIndex < entryIndex {
-		fmt.Printf("Get1=========================================================== server[%v]:  kv.lastApplyIndex: %v entryIndex: %v \n", kv.me, kv.lastApplyIndex, entryIndex)
 		time.Sleep(50 * time.Millisecond)
 		t += 1
 		if t > 10 {
@@ -117,8 +112,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	reply.Value, ok = kv.kvDatabaseSync.kvDatabase[args.Key]
 	kv.kvDatabaseSync.RUnlock()
 
-	// kv.clientRpc[args.ClientId] = args.RpcId
-
 	reply.Err = OK
 	kv.mu.Unlock()
 }
@@ -127,7 +120,6 @@ func(kv *KVServer) ServerApply() {
 	for {
 		applyMsg := <-kv.applyCh
 		if applyMsg.SnapshotValid {
-			fmt.Printf("applyMsg.SnapshotIndex: %v \n", applyMsg.SnapshotIndex)
 			if kv.rf.CondInstallSnapshot(applyMsg.SnapshotTerm, applyMsg.SnapshotIndex, applyMsg.Snapshot) {
 				r := bytes.NewBuffer(applyMsg.Snapshot)
 				d := labgob.NewDecoder(r)
@@ -138,11 +130,9 @@ func(kv *KVServer) ServerApply() {
 			}
 		} else if applyMsg.CommandValid {
 			keyValue := applyMsg.Command.(Op)
-			// fmt.Printf("rpcId: %v \n", keyValue.rpcId)
 			kv.clientRpcSync.RLock()
 			rpcId, ok := kv.clientRpcSync.clientRpc[keyValue.ClientId]
 			kv.clientRpcSync.RUnlock()
-			fmt.Printf("applyMsg.CommandIndex: %v   kv.clientRpc: %v  keyValue.clientId:  %v keyValue.rpcId: %v keyvalue.key: %v  keyValue.Value: %v \n",applyMsg.CommandIndex, kv.clientRpcSync.clientRpc, keyValue.ClientId, keyValue.RpcId, keyValue.Key, keyValue.Value)
 			if ok && rpcId == keyValue.RpcId {
 				kv.lastApplyIndex = applyMsg.CommandIndex
 				continue
@@ -172,7 +162,6 @@ func(kv *KVServer) ServerApply() {
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	// Your code here.
-	fmt.Printf("before lock put=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
 	kv.mu.Lock()
 	if args.Key == "" {
 		reply.Err = ErrNoKey
@@ -180,7 +169,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		return
 	}
 
-	fmt.Printf("before put=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
 	kv.clientRpcSync.RLock()
 	rpcId, ok := kv.clientRpcSync.clientRpc[args.ClientId]
 	kv.clientRpcSync.RUnlock()
@@ -190,7 +178,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		return
 	}
 
-	fmt.Printf("put=========================================================== server[%v]: kv.lastApplyIndex: %v  args.ClientId: %v args.RpcId: %v \n", kv.me, kv.lastApplyIndex, args.ClientId, args.RpcId)
 	op := Op{args.Op, args.Key, args.Value, args.ClientId, args.RpcId}
 	entryIndex, _, isLeader := kv.rf.Start(op)
 	if !isLeader {
@@ -208,7 +195,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			kv.mu.Unlock()
 			return
 		}
-		fmt.Printf("put1=========================================================== server[%v]:  kv.lastApplyIndex: %v entryIndex: %v \n", kv.me, kv.lastApplyIndex, entryIndex)
 		_, isLeader1 := kv.rf.GetState()
 		if !isLeader1 {
 			reply.Err = ErrWrongLeaderFor
@@ -216,8 +202,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			return
 		}
 	}
-
-	// kv.clientRpc[args.ClientId] = args.RpcId
 
 	reply.Err = OK
 	kv.mu.Unlock()
